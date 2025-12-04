@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Simple MQTT to Firebase server for Greenhouse IoT System",
   "main": "server.js",
+  "type" : "module",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
