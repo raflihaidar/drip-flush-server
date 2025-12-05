@@ -132,7 +132,7 @@ const routeMessage = async (topic, data) => {
   }
 };
 
-const checkPlantCondition = (value1, value2) => {
+const checkPlantCondition = (value1, value2, pumpStatus) => {
   let message = null;
 
   const isDry = (v) => v < 1200;
@@ -142,20 +142,26 @@ const checkPlantCondition = (value1, value2) => {
     ? "Sensor 1 Kering 🌵"
     : isWet(value1)
     ? "Sensor 1 Terlalu Basah 💦"
-    : "Sensor 1 Normal ✅";
+    : "Sensor 1 Normal";
 
   const condition2 = isDry(value2)
     ? "Sensor 2 Kering 🌵, sebaiknya disiram segera!"
     : isWet(value2)
     ? "Sensor 2 Terlalu Basah 💦"
-    : "Sensor 2 Normal ✅";
+    : "Sensor 2 Normal";
+
+  const pumpCondition = pumpStatus ? "Pompa Menyala!" : "Pompa Mati!";
 
   const issues = [condition1, condition2].filter(
     (cond) => !cond.includes("Normal")
   );
 
   if (issues.length > 0) {
-    message = issues.join(" & ");
+    issues.push(pumpCondition);
+  }
+
+  if (issues.length > 0) {
+    message = issues.join(", ");
   }
 
   return message;
@@ -171,7 +177,12 @@ const decidePumpAction = (sensorData) => {
   }
 
   // Jika salah satu sensor terlalu basah -> matikan pompa
-  if (sensor1Cond === "basah" || sensor2Cond === "basah" || sensor1Cond === 'normal' || sensor2Cond === 'normal') {
+  if (
+    sensor1Cond === "basah" ||
+    sensor2Cond === "basah" ||
+    sensor1Cond === "normal" ||
+    sensor2Cond === "normal"
+  ) {
     return false; // OFF
   }
 
@@ -239,10 +250,6 @@ const handleESP32SensorData = async (data) => {
     // Forward to app if needed
     await forwardToApp("sensors", sensorData);
 
-    const message = checkPlantCondition(sensor1Value, sensor2Value);
-
-    if (message) await sendNotification("Green House Jambangan", message);
-
     // ---- AUTOMATIC PUMP CONTROL ----
     const pumpAction = decidePumpAction(sensorData);
     if (pumpAction !== null) {
@@ -253,13 +260,16 @@ const handleESP32SensorData = async (data) => {
         is_active: pumpAction,
         status: pumpAction ? "on" : "off",
         timestamp: Date.now(),
-        source: "auto_control",
+        source: "manual",
         esp32_time: Date.now(),
       };
 
-      // Panggil handlePumpData untuk mengeksekusi kontrol pompa
-      await handlePumpData(pumpData, "greenhouse/pump/status");
+      await publishToTopic('greenhouse/control/pump', pumpData);
     }
+
+    const message = checkPlantCondition(sensor1Value, sensor2Value, pumpAction);
+
+    if (message) await sendNotification("Green House Jambangan", message);
 
     console.log("ESP32 sensor data saved to Firebase");
   } catch (error) {
